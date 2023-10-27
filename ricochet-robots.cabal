@@ -1,0 +1,12 @@
+cabal-version: 3.8
+
+name: ricochet-robots
+version: 0
+
+executable ricochet-robots
+  build-depends:
+    base ^>= 4.18,
+    containers ^>= 0.6.8 || ^>= 0.7,
+    termbox-banana ^>= 1.0.0,
+  ghc-options: -Wall
+  main-is: Main.hs
