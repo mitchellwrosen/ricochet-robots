@@ -5,14 +5,17 @@ where
 
 import Data.Foldable (fold)
 import Data.Function ((&))
+import Data.Functor ((<&>))
 import Data.IntSet (IntSet)
 import Data.IntSet qualified as IntSet
 import Data.Vector (Vector)
 import Data.Vector qualified as Vector
+import GHC.Generics (Generic)
+import Optics
 import Reactive.Banana
 import Reactive.Banana.Frameworks
 import System.Exit (exitFailure)
-import Termbox.Banana (Key (..), Pos (..), char)
+import Termbox.Banana (Key (..), Pos (..), bg, blue, char, green, red, yellow)
 import Termbox.Banana qualified as Term
 
 main :: IO ()
@@ -23,22 +26,43 @@ main =
 
 main1 :: Term.Inputs -> MomentIO (Term.Outputs ())
 main1 Term.Inputs {keys} = do
-  let bgame =
-        pure
-          Game
-            { horizontalWalls = initialHorizontalWalls,
-              verticalWalls = initialVerticalWalls
-            }
+  let emove =
+        filterJust
+          ( keys <&> \case
+              KeyArrowDown -> Just D
+              KeyArrowLeft -> Just L
+              KeyArrowRight -> Just R
+              KeyArrowUp -> Just U
+              _ -> Nothing
+          )
+  bgame <-
+    accumB
+      Game
+        { blueGuy = Pos 0 0,
+          greenGuy = Pos 1 0,
+          redGuy = Pos 2 2,
+          yellowGuy = Pos 3 3,
+          horizontalWalls = initialHorizontalWalls,
+          verticalWalls = initialVerticalWalls
+        }
+      (moveBlueGuy <$> emove)
   pure
     Term.Outputs
       { scene = renderSceneAt (Pos 0 0) . render <$> bgame,
         done = () <$ filterE (== KeyEsc) keys
       }
 
+data Dir = D | L | R | U
+
 data Game = Game
-  { horizontalWalls :: !(Vector IntSet),
+  { blueGuy :: !Pos,
+    greenGuy :: !Pos,
+    redGuy :: !Pos,
+    yellowGuy :: !Pos,
+    horizontalWalls :: !(Vector IntSet),
     verticalWalls :: !(Vector IntSet)
   }
+  deriving stock (Generic)
 
 initialHorizontalWalls :: Vector IntSet
 initialHorizontalWalls =
@@ -82,12 +106,59 @@ initialVerticalWalls =
       [4, 11, 15]
     ]
 
+moveBlueGuy :: Dir -> Game -> Game
+moveBlueGuy dir game =
+  moveGuy #blueGuy (game ^. #greenGuy) (game ^. #redGuy) (game ^. #yellowGuy) dir game
+
+moveGuy :: Lens' Game Pos -> Pos -> Pos -> Pos -> Dir -> Game -> Game
+moveGuy guy1 guy2 guy3 guy4 dir game =
+  case dir of
+    D ->
+      case IntSet.lookupGE (game ^. guy1 % #row) horizontalStoppers of
+        Nothing -> game
+        Just row -> game & #blueGuy % #row .~ row
+    L -> game & #blueGuy % #col .~ (maybe 0 (+ 1) (IntSet.lookupLT (game ^. guy1 % #col) verticalStoppers))
+    R ->
+      case IntSet.lookupGE (game ^. guy1 % #col) verticalStoppers of
+        Nothing -> game
+        Just col -> game & guy1 % #col .~ col
+    U -> game & guy1 % #row .~ (maybe 0 (+ 1) (IntSet.lookupLT (game ^. guy1 % #row) horizontalStoppers))
+  where
+    horizontalStoppers =
+      ((game ^. #horizontalWalls) Vector.! (game ^. guy1 % #col))
+        & (if guy2 ^. #col == game ^. guy1 % #col then IntSet.insert (guy2 ^. #row) . IntSet.insert (guy2 ^. #row - 1) else id)
+        & (if guy3 ^. #col == game ^. guy1 % #col then IntSet.insert (guy3 ^. #row) . IntSet.insert (guy3 ^. #row - 1) else id)
+        & (if guy4 ^. #col == game ^. guy1 % #col then IntSet.insert (guy4 ^. #row) . IntSet.insert (guy4 ^. #row - 1) else id)
+    verticalStoppers =
+      ((game ^. #verticalWalls) Vector.! (game ^. guy1 % #row))
+        & (if guy2 ^. #row == game ^. guy1 % #row then IntSet.insert (guy2 ^. #col) . IntSet.insert (guy2 ^. #col - 1) else id)
+        & (if guy3 ^. #row == game ^. guy1 % #row then IntSet.insert (guy3 ^. #col) . IntSet.insert (guy3 ^. #col - 1) else id)
+        & (if guy4 ^. #row == game ^. guy1 % #row then IntSet.insert (guy4 ^. #col) . IntSet.insert (guy4 ^. #col - 1) else id)
+
+------------------------------------------------------------------------------------------------------------------------
+-- Rendering
+
+--     0   1   2   3
+--   +---+---+---+---+
+-- 0 |   |   |   |   |
+--   +---+---+---+---+
+-- 1 |   | X |   |   |
+--   +---+---+---+---+
+-- 2 |   |   |   |   |
+--   +---+---+---+---+
+-- 4 |   |   |   |   |
+--   +---+---+---+---+
+
 render :: Game -> Scene
-render Game {horizontalWalls, verticalWalls} =
+render game@Game {horizontalWalls, verticalWalls} =
   fold
     [ renderHorizontalWalls horizontalWalls,
       renderVerticalWalls verticalWalls,
-      renderIntersections horizontalWalls verticalWalls
+      renderIntersections horizontalWalls verticalWalls,
+      renderGuy (game ^. #blueGuy) blue,
+      renderGuy (game ^. #greenGuy) green,
+      renderGuy (game ^. #redGuy) red,
+      renderGuy (game ^. #yellowGuy) yellow
     ]
 
 renderHorizontalWalls :: Vector IntSet -> Scene
@@ -115,22 +186,6 @@ renderVerticalWalls walls =
     wall (Pos row col) =
       cell (Pos (row * 2 + 1) (col * 4)) vwall
 
---   0   1   2   3   4
--- 0 +---+---+---+---+
---   |   |   |   |   |
--- 1 +---+---+---+---+
---   |   |   |   |   |
--- 2 +---+---+---+---+
---   |   |   |   |   |
--- 3 +---+---+---+---+
---   |   |   |   |   |
--- 4 +---+---+---+---+
-
---   for row := 0 to row := length rows
---     for col := 0 to length cols
---       what character goes at cell (row*2, col*4)?
---       if there's a wall at
-
 renderIntersections :: Vector IntSet -> Vector IntSet -> Scene
 renderIntersections horizontalWalls verticalWalls =
   [0 .. hlen] & foldMap \col ->
@@ -156,6 +211,10 @@ renderIntersections horizontalWalls verticalWalls =
   where
     hlen = Vector.length horizontalWalls
     vlen = Vector.length verticalWalls
+
+renderGuy :: Pos -> Term.Color -> Scene
+renderGuy (Pos row col) color =
+  cell (Pos (row * 2 + 1) (col * 4 + 2)) (char ' ' & bg color)
 
 hwall :: Term.Cell
 hwall = char '━'

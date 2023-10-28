@@ -7,6 +7,7 @@ executable ricochet-robots
   build-depends:
     base ^>= 4.18,
     containers ^>= 0.6.8 || ^>= 0.7,
+    optics,
     reactive-banana ^>= 1.3.2,
     termbox-banana ^>= 1.0.0,
     vector,
@@ -16,6 +17,7 @@ executable ricochet-robots
     DuplicateRecordFields
     LambdaCase
     NamedFieldPuns
+    OverloadedLabels
   default-language: GHC2021
   ghc-options: -Wall
   main-is: Main.hs
