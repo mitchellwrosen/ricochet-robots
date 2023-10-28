@@ -4,10 +4,9 @@ module Main
 where
 
 import Data.Foldable (fold)
-import Data.Function ((&))
-import Data.Functor ((<&>))
 import Data.IntSet (IntSet)
 import Data.IntSet qualified as IntSet
+import Data.Set qualified as Set
 import Data.Vector (Vector)
 import Data.Vector qualified as Vector
 import GHC.Generics (Generic)
@@ -15,17 +14,19 @@ import Optics
 import Reactive.Banana
 import Reactive.Banana.Frameworks
 import System.Exit (exitFailure)
+import System.Random qualified as Random
 import Termbox.Banana (Key (..), Pos (..), bg, blue, char, green, red, yellow)
 import Termbox.Banana qualified as Term
 
 main :: IO ()
-main =
-  Term.run main1 >>= \case
+main = do
+  initialGame <- randomGame
+  Term.run (main1 initialGame) >>= \case
     Left _err -> exitFailure
     Right () -> pure ()
 
-main1 :: Term.Inputs -> MomentIO (Term.Outputs ())
-main1 Term.Inputs {keys} = do
+main1 :: Game -> Term.Inputs -> MomentIO (Term.Outputs ())
+main1 initialGame Term.Inputs {keys} = do
   let eMove =
         filterJust
           ( keys <&> \case
@@ -49,14 +50,7 @@ main1 Term.Inputs {keys} = do
       )
   bGame <-
     accumB
-      Game
-        { blueGuy = Pos 0 0,
-          greenGuy = Pos 1 0,
-          redGuy = Pos 2 2,
-          yellowGuy = Pos 3 3,
-          horizontalWalls = initialHorizontalWalls,
-          verticalWalls = initialVerticalWalls
-        }
+      initialGame
       ( ( \guy ->
             case guy of
               BlueGuy -> moveBlueGuy
@@ -77,7 +71,11 @@ data Dir = D | L | R | U
 data Guy = BlueGuy | GreenGuy | RedGuy | YellowGuy
 
 data Game = Game
-  { blueGuy :: !Pos,
+  { origBlueGuy :: !Pos,
+    origGreenGuy :: !Pos,
+    origRedGuy :: !Pos,
+    origYellowGuy :: !Pos,
+    blueGuy :: !Pos,
     greenGuy :: !Pos,
     redGuy :: !Pos,
     yellowGuy :: !Pos,
@@ -85,6 +83,44 @@ data Game = Game
     verticalWalls :: !(Vector IntSet)
   }
   deriving stock (Generic)
+
+randomGame :: IO Game
+randomGame = do
+  horizontalWalls <- pure initialHorizontalWalls
+  verticalWalls <- pure initialVerticalWalls
+  let randomPos occupied = do
+        pos <-
+          Pos
+            <$> Random.randomRIO (0, Vector.length horizontalWalls - 1)
+            <*> Random.randomRIO (0, Vector.length verticalWalls - 1)
+        if Set.member pos occupied then randomPos occupied else pure pos
+  let occupied =
+        Set.fromList do
+          row <- [vlenDivTwo, vlenDivTwo + 1]
+          col <- [hlenDivTwo, hlenDivTwo + 1]
+          pure (Pos row col)
+        where
+          hlenDivTwo = Vector.length horizontalWalls `div` 2
+          vlenDivTwo = Vector.length verticalWalls `div` 2
+  blueGuy <- randomPos occupied
+  let occupied1 = Set.insert blueGuy occupied
+  greenGuy <- randomPos occupied1
+  let occupied2 = Set.insert greenGuy occupied1
+  redGuy <- randomPos occupied2
+  yellowGuy <- randomPos (Set.insert redGuy occupied2)
+  pure
+    Game
+      { origBlueGuy = blueGuy,
+        origGreenGuy = greenGuy,
+        origRedGuy = redGuy,
+        origYellowGuy = yellowGuy,
+        blueGuy,
+        greenGuy,
+        redGuy,
+        yellowGuy,
+        horizontalWalls = initialHorizontalWalls,
+        verticalWalls = initialVerticalWalls
+      }
 
 initialHorizontalWalls :: Vector IntSet
 initialHorizontalWalls =
@@ -180,7 +216,7 @@ moveGuy guy1 guy2 guy3 guy4 dir game =
 --   +---+---+---+---+
 -- 2 |   |   |   |   |
 --   +---+---+---+---+
--- 4 |   |   |   |   |
+-- 3 |   |   |   |   |
 --   +---+---+---+---+
 
 render :: Game -> Scene
