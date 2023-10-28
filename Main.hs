@@ -36,6 +36,12 @@ main1 initialGame Term.Inputs {keys} = do
               KeyArrowUp -> Just U
               _ -> Nothing
           )
+  let eResetMoves =
+        filterJust
+          ( keys <&> \case
+              KeyChar 'r' -> Just ()
+              _ -> Nothing
+          )
   bGuy <-
     stepper
       BlueGuy
@@ -51,14 +57,19 @@ main1 initialGame Term.Inputs {keys} = do
   bGame <-
     accumB
       initialGame
-      ( ( \guy ->
-            case guy of
-              BlueGuy -> moveBlueGuy
-              GreenGuy -> moveGreenGuy
-              RedGuy -> moveRedGuy
-              YellowGuy -> moveYellowGuy
-        )
-          <$> bGuy <@> eMove
+      ( foldr
+          (unionWith const)
+          never
+          [ ( \guy ->
+                case guy of
+                  BlueGuy -> moveBlueGuy
+                  GreenGuy -> moveGreenGuy
+                  RedGuy -> moveRedGuy
+                  YellowGuy -> moveYellowGuy
+            )
+              <$> bGuy <@> eMove,
+            resetMoves <$ eResetMoves
+          ]
       )
   pure
     Term.Outputs
@@ -238,6 +249,15 @@ moveGuy guy1 guy2 guy3 guy4 dir game =
         & (if guy2 ^. #row == game ^. guy1 % #row then IntSet.insert (guy2 ^. #col) . IntSet.insert (guy2 ^. #col - 1) else id)
         & (if guy3 ^. #row == game ^. guy1 % #row then IntSet.insert (guy3 ^. #col) . IntSet.insert (guy3 ^. #col - 1) else id)
         & (if guy4 ^. #row == game ^. guy1 % #row then IntSet.insert (guy4 ^. #col) . IntSet.insert (guy4 ^. #col - 1) else id)
+
+resetMoves :: Game -> Game
+resetMoves game =
+  game
+    & (#blueGuy .~ (game ^. #origBlueGuy))
+    & (#greenGuy .~ (game ^. #origGreenGuy))
+    & (#redGuy .~ (game ^. #origRedGuy))
+    & (#yellowGuy .~ (game ^. #origYellowGuy))
+    & (#moves .~ 0)
 
 ------------------------------------------------------------------------------------------------------------------------
 -- Rendering
