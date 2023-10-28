@@ -15,7 +15,7 @@ import Reactive.Banana
 import Reactive.Banana.Frameworks
 import System.Exit (exitFailure)
 import System.Random qualified as Random
-import Termbox.Banana (Key (..), Pos (..), bg, blue, char, green, red, yellow)
+import Termbox.Banana (Key (..), Pos (..), bg, blue, char, fg, green, red, yellow)
 import Termbox.Banana qualified as Term
 
 main :: IO ()
@@ -225,6 +225,10 @@ render game@Game {horizontalWalls, verticalWalls} =
     [ renderHorizontalWalls horizontalWalls,
       renderVerticalWalls verticalWalls,
       renderIntersections horizontalWalls verticalWalls,
+      renderOrigGuy (game ^. #origBlueGuy) blue,
+      renderOrigGuy (game ^. #origGreenGuy) green,
+      renderOrigGuy (game ^. #origRedGuy) red,
+      renderOrigGuy (game ^. #origYellowGuy) yellow,
       renderGuy (game ^. #blueGuy) blue,
       renderGuy (game ^. #greenGuy) green,
       renderGuy (game ^. #redGuy) red,
@@ -281,6 +285,10 @@ renderIntersections horizontalWalls verticalWalls =
   where
     hlen = Vector.length horizontalWalls
     vlen = Vector.length verticalWalls
+
+renderOrigGuy :: Pos -> Term.Color -> Scene
+renderOrigGuy (Pos row col) color =
+  cell (Pos (row * 2 + 1) (col * 4 + 2)) (char '░' & fg color)
 
 renderGuy :: Pos -> Term.Color -> Scene
 renderGuy (Pos row col) color =
