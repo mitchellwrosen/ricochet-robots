@@ -79,6 +79,7 @@ data Game = Game
     greenGuy :: !Pos,
     redGuy :: !Pos,
     yellowGuy :: !Pos,
+    moves :: !Int,
     horizontalWalls :: !(Vector IntSet),
     verticalWalls :: !(Vector IntSet)
   }
@@ -115,6 +116,7 @@ randomGame = do
         greenGuy,
         redGuy,
         yellowGuy,
+        moves = 0,
         horizontalWalls = initialHorizontalWalls,
         verticalWalls = initialVerticalWalls
       }
@@ -191,16 +193,41 @@ moveGuy :: Lens' Game Pos -> Pos -> Pos -> Pos -> Dir -> Game -> Game
 moveGuy guy1 guy2 guy3 guy4 dir game =
   case dir of
     D ->
-      case IntSet.lookupGE (game ^. guy1 % #row) horizontalStoppers of
-        Nothing -> game
-        Just row -> game & guy1 % #row .~ row
-    L -> game & guy1 % #col .~ (maybe 0 (+ 1) (IntSet.lookupLT (game ^. guy1 % #col) verticalStoppers))
+      case IntSet.lookupGE guy1r horizontalStoppers of
+        Just row
+          | row /= guy1r ->
+              game
+                & (guy1 % #row .~ row)
+                & (#moves %~ (+ 1))
+        _ -> game
+    L ->
+      let col = maybe 0 (+ 1) (IntSet.lookupLT guy1c verticalStoppers)
+       in if col /= guy1c
+            then
+              game
+                & (guy1 % #col .~ col)
+                & (#moves %~ (+ 1))
+            else game
     R ->
-      case IntSet.lookupGE (game ^. guy1 % #col) verticalStoppers of
-        Nothing -> game
-        Just col -> game & guy1 % #col .~ col
-    U -> game & guy1 % #row .~ (maybe 0 (+ 1) (IntSet.lookupLT (game ^. guy1 % #row) horizontalStoppers))
+      case IntSet.lookupGE guy1c verticalStoppers of
+        Just col
+          | guy1c /= col ->
+              game
+                & (guy1 % #col .~ col)
+                & (#moves %~ (+ 1))
+        _ -> game
+    U ->
+      let row = maybe 0 (+ 1) (IntSet.lookupLT (game ^. guy1 % #row) horizontalStoppers)
+       in if row /= guy1r
+            then
+              game
+                & (guy1 % #row .~ row)
+                & (#moves %~ (+ 1))
+            else game
   where
+    guy1c = game ^. guy1 % #col
+    guy1r = game ^. guy1 % #row
+
     horizontalStoppers =
       ((game ^. #horizontalWalls) Vector.! (game ^. guy1 % #col))
         & (if guy2 ^. #col == game ^. guy1 % #col then IntSet.insert (guy2 ^. #row) . IntSet.insert (guy2 ^. #row - 1) else id)
