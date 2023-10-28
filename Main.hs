@@ -1,11 +1,11 @@
-module Main
-  ( main,
-  )
-where
+module Main (main) where
 
+import Control.Monad.Trans.State.Strict (StateT, evalStateT)
+import Control.Monad.Trans.State.Strict qualified as State
 import Data.Foldable (fold)
 import Data.IntSet (IntSet)
 import Data.IntSet qualified as IntSet
+import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Vector (Vector)
 import Data.Vector qualified as Vector
@@ -88,13 +88,9 @@ randomGame :: IO Game
 randomGame = do
   horizontalWalls <- pure initialHorizontalWalls
   verticalWalls <- pure initialVerticalWalls
-  let randomPos occupied = do
-        pos <-
-          Pos
-            <$> Random.randomRIO (0, Vector.length horizontalWalls - 1)
-            <*> Random.randomRIO (0, Vector.length verticalWalls - 1)
-        if Set.member pos occupied then randomPos occupied else pure pos
-  let occupied =
+  let maxRow = Vector.length horizontalWalls - 1
+  let maxCol = Vector.length verticalWalls - 1
+  let initialOccupied =
         Set.fromList do
           row <- [vlenDivTwo, vlenDivTwo + 1]
           col <- [hlenDivTwo, hlenDivTwo + 1]
@@ -102,12 +98,13 @@ randomGame = do
         where
           hlenDivTwo = Vector.length horizontalWalls `div` 2
           vlenDivTwo = Vector.length verticalWalls `div` 2
-  blueGuy <- randomPos occupied
-  let occupied1 = Set.insert blueGuy occupied
-  greenGuy <- randomPos occupied1
-  let occupied2 = Set.insert greenGuy occupied1
-  redGuy <- randomPos occupied2
-  yellowGuy <- randomPos (Set.insert redGuy occupied2)
+  (blueGuy, greenGuy, redGuy, yellowGuy) <-
+    flip evalStateT initialOccupied do
+      (,,,)
+        <$> randomPosition maxRow maxCol
+        <*> randomPosition maxRow maxCol
+        <*> randomPosition maxRow maxCol
+        <*> randomPosition maxRow maxCol
   pure
     Game
       { origBlueGuy = blueGuy,
@@ -121,6 +118,16 @@ randomGame = do
         horizontalWalls = initialHorizontalWalls,
         verticalWalls = initialVerticalWalls
       }
+
+randomPosition :: Int -> Int -> StateT (Set Pos) IO Pos
+randomPosition maxRow maxCol = do
+  occupied <- State.get
+  let loop = do
+        pos <- liftIO (Pos <$> Random.randomRIO (0, maxRow) <*> Random.randomRIO (0, maxCol))
+        if Set.member pos occupied then loop else pure pos
+  pos <- loop
+  State.put $! Set.insert pos occupied
+  pure pos
 
 initialHorizontalWalls :: Vector IntSet
 initialHorizontalWalls =

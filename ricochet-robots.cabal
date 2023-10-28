@@ -9,8 +9,9 @@ executable ricochet-robots
     containers ^>= 0.6.8 || ^>= 0.7,
     optics ^>= 0.4.2,
     reactive-banana ^>= 1.3.2,
-    termbox-banana ^>= 1.0.0,
     random ^>= 1.2.1,
+    termbox-banana ^>= 1.0.0,
+    transformers ^>= 0.6.1,
     vector,
   default-extensions:
     BlockArguments
