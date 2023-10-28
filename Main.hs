@@ -254,9 +254,10 @@ moveGuy guy1 guy2 guy3 guy4 dir game =
 --   +---+---+---+---+
 
 render :: Game -> Image
-render game@Game {horizontalWalls, verticalWalls} =
+render game@Game {moves, horizontalWalls, verticalWalls} =
   ivcat
-    [ fold
+    [ ihcat [istring "Moves: ", istring (show moves)],
+      fold
         [ renderHorizontalWalls horizontalWalls,
           renderVerticalWalls verticalWalls,
           renderIntersections horizontalWalls verticalWalls,
@@ -372,6 +373,10 @@ instance Semigroup Image where
 
 ichar :: Char -> Image
 ichar c = ImageCell (Term.char c)
+
+istring :: [Char] -> Image
+istring =
+  ihcat . map ichar
 
 ihcat :: [Image] -> Image
 ihcat =
