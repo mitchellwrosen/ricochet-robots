@@ -86,7 +86,8 @@ render :: Game -> Scene
 render Game {horizontalWalls, verticalWalls} =
   fold
     [ renderHorizontalWalls horizontalWalls,
-      renderVerticalWalls verticalWalls
+      renderVerticalWalls verticalWalls,
+      renderIntersections horizontalWalls verticalWalls
     ]
 
 renderHorizontalWalls :: Vector IntSet -> Scene
@@ -100,7 +101,7 @@ renderHorizontalWalls walls =
     wall :: Pos -> Scene
     wall (Pos row col) =
       [1, 2, 3] & foldMap \offset ->
-        cell (Pos (2 * row) (col * 4 + offset)) (char '━')
+        cell (Pos (2 * row) (col * 4 + offset)) hwall
 
 renderVerticalWalls :: Vector IntSet -> Scene
 renderVerticalWalls walls =
@@ -112,7 +113,55 @@ renderVerticalWalls walls =
   where
     wall :: Pos -> Scene
     wall (Pos row col) =
-      cell (Pos (row * 2 + 1) (col * 4)) (char '┃')
+      cell (Pos (row * 2 + 1) (col * 4)) vwall
+
+--   0   1   2   3   4
+-- 0 +---+---+---+---+
+--   |   |   |   |   |
+-- 1 +---+---+---+---+
+--   |   |   |   |   |
+-- 2 +---+---+---+---+
+--   |   |   |   |   |
+-- 3 +---+---+---+---+
+--   |   |   |   |   |
+-- 4 +---+---+---+---+
+
+--   for row := 0 to row := length rows
+--     for col := 0 to length cols
+--       what character goes at cell (row*2, col*4)?
+--       if there's a wall at
+
+renderIntersections :: Vector IntSet -> Vector IntSet -> Scene
+renderIntersections horizontalWalls verticalWalls =
+  [0 .. hlen] & foldMap \col ->
+    [0 .. vlen] & foldMap \row ->
+      let pos = Pos (row * 2) (col * 4)
+          wallLeft = col >= 1 && (row == 0 || IntSet.member (row - 1) (horizontalWalls Vector.! (col - 1)))
+          wallRight = col < hlen && (row == 0 || IntSet.member (row - 1) (horizontalWalls Vector.! col))
+          wallAbove = row >= 1 && (col == 0 || IntSet.member (col - 1) (verticalWalls Vector.! (row - 1)))
+          wallBelow = row < vlen && (col == 0 || IntSet.member (col - 1) (verticalWalls Vector.! row))
+       in case (wallLeft, wallRight, wallAbove, wallBelow) of
+            (False, False, True, True) -> cell pos vwall
+            (False, True, False, True) -> cell pos (char '┏')
+            (False, True, True, False) -> cell pos (char '┗')
+            (False, True, True, True) -> cell pos (char '┣')
+            (True, False, False, True) -> cell pos (char '┓')
+            (True, False, True, False) -> cell pos (char '┛')
+            (True, False, True, True) -> cell pos (char '┫')
+            (True, True, False, False) -> cell pos hwall
+            (True, True, False, True) -> cell pos (char '┳')
+            (True, True, True, False) -> cell pos (char '┻')
+            (True, True, True, True) -> cell pos (char '╋')
+            _ -> mempty
+  where
+    hlen = Vector.length horizontalWalls
+    vlen = Vector.length verticalWalls
+
+hwall :: Term.Cell
+hwall = char '━'
+
+vwall :: Term.Cell
+vwall = char '┃'
 
 ------------------------------------------------------------------------------------------------------------------------
 -- Rendering toolkit
