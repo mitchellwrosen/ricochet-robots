@@ -26,7 +26,7 @@ main =
 
 main1 :: Term.Inputs -> MomentIO (Term.Outputs ())
 main1 Term.Inputs {keys} = do
-  let emove =
+  let eMove =
         filterJust
           ( keys <&> \case
               KeyArrowDown -> Just D
@@ -35,7 +35,19 @@ main1 Term.Inputs {keys} = do
               KeyArrowUp -> Just U
               _ -> Nothing
           )
-  bgame <-
+  bGuy <-
+    stepper
+      BlueGuy
+      ( filterJust
+          ( keys <&> \case
+              KeyChar '1' -> Just BlueGuy
+              KeyChar '2' -> Just GreenGuy
+              KeyChar '3' -> Just RedGuy
+              KeyChar '4' -> Just YellowGuy
+              _ -> Nothing
+          )
+      )
+  bGame <-
     accumB
       Game
         { blueGuy = Pos 0 0,
@@ -45,14 +57,24 @@ main1 Term.Inputs {keys} = do
           horizontalWalls = initialHorizontalWalls,
           verticalWalls = initialVerticalWalls
         }
-      (moveBlueGuy <$> emove)
+      ( ( \guy ->
+            case guy of
+              BlueGuy -> moveBlueGuy
+              GreenGuy -> moveGreenGuy
+              RedGuy -> moveRedGuy
+              YellowGuy -> moveYellowGuy
+        )
+          <$> bGuy <@> eMove
+      )
   pure
     Term.Outputs
-      { scene = renderSceneAt (Pos 0 0) . render <$> bgame,
+      { scene = renderSceneAt (Pos 0 0) . render <$> bGame,
         done = () <$ filterE (== KeyEsc) keys
       }
 
 data Dir = D | L | R | U
+
+data Guy = BlueGuy | GreenGuy | RedGuy | YellowGuy
 
 data Game = Game
   { blueGuy :: !Pos,
@@ -110,14 +132,26 @@ moveBlueGuy :: Dir -> Game -> Game
 moveBlueGuy dir game =
   moveGuy #blueGuy (game ^. #greenGuy) (game ^. #redGuy) (game ^. #yellowGuy) dir game
 
+moveGreenGuy :: Dir -> Game -> Game
+moveGreenGuy dir game =
+  moveGuy #greenGuy (game ^. #blueGuy) (game ^. #redGuy) (game ^. #yellowGuy) dir game
+
+moveRedGuy :: Dir -> Game -> Game
+moveRedGuy dir game =
+  moveGuy #redGuy (game ^. #blueGuy) (game ^. #greenGuy) (game ^. #yellowGuy) dir game
+
+moveYellowGuy :: Dir -> Game -> Game
+moveYellowGuy dir game =
+  moveGuy #yellowGuy (game ^. #blueGuy) (game ^. #greenGuy) (game ^. #redGuy) dir game
+
 moveGuy :: Lens' Game Pos -> Pos -> Pos -> Pos -> Dir -> Game -> Game
 moveGuy guy1 guy2 guy3 guy4 dir game =
   case dir of
     D ->
       case IntSet.lookupGE (game ^. guy1 % #row) horizontalStoppers of
         Nothing -> game
-        Just row -> game & #blueGuy % #row .~ row
-    L -> game & #blueGuy % #col .~ (maybe 0 (+ 1) (IntSet.lookupLT (game ^. guy1 % #col) verticalStoppers))
+        Just row -> game & guy1 % #row .~ row
+    L -> game & guy1 % #col .~ (maybe 0 (+ 1) (IntSet.lookupLT (game ^. guy1 % #col) verticalStoppers))
     R ->
       case IntSet.lookupGE (game ^. guy1 % #col) verticalStoppers of
         Nothing -> game
