@@ -62,7 +62,7 @@ main1 initialGame Term.Inputs {keys} = do
       )
   pure
     Term.Outputs
-      { scene = renderSceneAt (Pos 0 0) . render <$> bGame,
+      { scene = irender (Pos 0 0) . render <$> bGame,
         done = () <$ filterE (== KeyEsc) keys
       }
 
@@ -253,9 +253,9 @@ moveGuy guy1 guy2 guy3 guy4 dir game =
 -- 3 |   |   |   |   |
 --   +---+---+---+---+
 
-render :: Game -> Scene
+render :: Game -> Image
 render game@Game {horizontalWalls, verticalWalls} =
-  vcat
+  ivcat
     [ fold
         [ renderHorizontalWalls horizontalWalls,
           renderVerticalWalls verticalWalls,
@@ -271,7 +271,7 @@ render game@Game {horizontalWalls, verticalWalls} =
         ]
     ]
 
-renderHorizontalWalls :: Vector IntSet -> Scene
+renderHorizontalWalls :: Vector IntSet -> Image
 renderHorizontalWalls walls =
   [0 .. (Vector.length walls - 1)] & foldMap \col ->
     IntSet.foldl'
@@ -279,12 +279,12 @@ renderHorizontalWalls walls =
       (wall (Pos 0 col))
       (walls Vector.! col)
   where
-    wall :: Pos -> Scene
+    wall :: Pos -> Image
     wall (Pos row col) =
       [1, 2, 3] & foldMap \offset ->
-        cell (Pos (2 * row) (col * 4 + offset)) hwall
+        ipos (Pos (2 * row) (col * 4 + offset)) hwall
 
-renderVerticalWalls :: Vector IntSet -> Scene
+renderVerticalWalls :: Vector IntSet -> Image
 renderVerticalWalls walls =
   [0 .. (Vector.length walls - 1)] & foldMap \row ->
     IntSet.foldl'
@@ -292,11 +292,11 @@ renderVerticalWalls walls =
       (wall (Pos row 0))
       (walls Vector.! row)
   where
-    wall :: Pos -> Scene
+    wall :: Pos -> Image
     wall (Pos row col) =
-      cell (Pos (row * 2 + 1) (col * 4)) vwall
+      ipos (Pos (row * 2 + 1) (col * 4)) vwall
 
-renderIntersections :: Vector IntSet -> Vector IntSet -> Scene
+renderIntersections :: Vector IntSet -> Vector IntSet -> Image
 renderIntersections horizontalWalls verticalWalls =
   [0 .. hlen] & foldMap \col ->
     [0 .. vlen] & foldMap \row ->
@@ -306,35 +306,39 @@ renderIntersections horizontalWalls verticalWalls =
           wallAbove = row >= 1 && (col == 0 || IntSet.member (col - 1) (verticalWalls Vector.! (row - 1)))
           wallBelow = row < vlen && (col == 0 || IntSet.member (col - 1) (verticalWalls Vector.! row))
        in case (wallLeft, wallRight, wallAbove, wallBelow) of
-            (False, False, True, True) -> cell pos vwall
-            (False, True, False, True) -> cell pos (Term.char '┏')
-            (False, True, True, False) -> cell pos (Term.char '┗')
-            (False, True, True, True) -> cell pos (Term.char '┣')
-            (True, False, False, True) -> cell pos (Term.char '┓')
-            (True, False, True, False) -> cell pos (Term.char '┛')
-            (True, False, True, True) -> cell pos (Term.char '┫')
-            (True, True, False, False) -> cell pos hwall
-            (True, True, False, True) -> cell pos (Term.char '┳')
-            (True, True, True, False) -> cell pos (Term.char '┻')
-            (True, True, True, True) -> cell pos (Term.char '╋')
+            (False, False, True, True) -> ipos pos vwall
+            (False, True, False, True) -> ipos pos (ichar '┏')
+            (False, True, True, False) -> ipos pos (ichar '┗')
+            (False, True, True, True) -> ipos pos (ichar '┣')
+            (True, False, False, True) -> ipos pos (ichar '┓')
+            (True, False, True, False) -> ipos pos (ichar '┛')
+            (True, False, True, True) -> ipos pos (ichar '┫')
+            (True, True, False, False) -> ipos pos hwall
+            (True, True, False, True) -> ipos pos (ichar '┳')
+            (True, True, True, False) -> ipos pos (ichar '┻')
+            (True, True, True, True) -> ipos pos (ichar '╋')
             _ -> mempty
   where
     hlen = Vector.length horizontalWalls
     vlen = Vector.length verticalWalls
 
-renderOrigGuy :: Pos -> Term.Color -> Scene
+renderOrigGuy :: Pos -> Term.Color -> Image
 renderOrigGuy (Pos row col) color =
-  cell (Pos (row * 2 + 1) (col * 4 + 2)) (Term.char '░' & fg color)
+  ichar '░'
+    & ifg color
+    & ipos (Pos (row * 2 + 1) (col * 4 + 2))
 
-renderGuy :: Pos -> Term.Color -> Scene
+renderGuy :: Pos -> Term.Color -> Image
 renderGuy (Pos row col) color =
-  cell (Pos (row * 2 + 1) (col * 4 + 2)) (Term.char ' ' & bg color)
+  ichar ' '
+    & ibg color
+    & ipos (Pos (row * 2 + 1) (col * 4 + 2))
 
-hwall :: Term.Cell
-hwall = Term.char '━'
+hwall :: Image
+hwall = ichar '━'
 
-vwall :: Term.Cell
-vwall = Term.char '┃'
+vwall :: Image
+vwall = ichar '┃'
 
 ------------------------------------------------------------------------------------------------------------------------
 -- Rendering toolkit
@@ -349,30 +353,6 @@ instance Semigroup M where
   M s1 r1 c1 <> M s2 r2 c2 =
     M (s1 <> s2) (max r1 r2) (max c1 c2)
 
-newtype Scene
-  = Scene (Pos -> M)
-  deriving newtype (Monoid, Semigroup)
-
-renderSceneAt :: Pos -> Scene -> Term.Scene
-renderSceneAt pos (Scene f) =
-  let M s _ _ = f pos in s
-
-vcat :: [Scene] -> Scene
-vcat =
-  foldr combine mempty
-  where
-    combine :: Scene -> Scene -> Scene
-    combine (Scene f) (Scene g) =
-      Scene \pos ->
-        let M s1 r1 c1 = f pos
-            M s2 r2 c2 = g (posDown r1 pos)
-         in M (s1 <> s2) (r1 + r2) (max c1 c2)
-
-cell :: Pos -> Term.Cell -> Scene
-cell (Pos r c) x =
-  Scene \(Pos r0 c0) ->
-    M (Term.cell (Pos (r + r0) (c + c0)) x) (r + 1) (c + 1)
-
 data Image
   = ImageCell !Term.Cell
   | ImageH !Image !Image
@@ -380,6 +360,7 @@ data Image
   | ImageA !Image !Image
   | ImageFg !Term.Color !Image
   | ImageBg !Term.Color !Image
+  | ImagePos !Pos !Image
   | ImageEmpty
 
 instance Monoid Image where
@@ -406,28 +387,35 @@ ifg = ImageFg
 ibg :: Term.Color -> Image -> Image
 ibg = ImageBg
 
+ipos :: Pos -> Image -> Image
+ipos = ImagePos
+
 irender :: Pos -> Image -> Term.Scene
 irender pos img =
   let M s _ _ = irenderm pos img in s
 
 irenderm :: Pos -> Image -> M
-irenderm pos =
+irenderm =
   go id id
   where
-    go addFg addBg = \case
+    go addFg addBg pos = \case
       ImageCell c -> M (Term.cell pos (addBg (addFg c))) 1 1
       ImageH i1 i2 ->
-        let M s1 r1 c1 = irenderm pos i1
-            M s2 r2 c2 = irenderm (posRight c1 pos) i2
+        let M s1 r1 c1 = go addFg addBg pos i1
+            M s2 r2 c2 = go addFg addBg (posRight c1 pos) i2
          in M (s1 <> s2) (max r1 r2) (c1 + c2)
       ImageV i1 i2 ->
-        let M s1 r1 c1 = irenderm pos i1
-            M s2 r2 c2 = irenderm (posDown r1 pos) i2
+        let M s1 r1 c1 = go addFg addBg pos i1
+            M s2 r2 c2 = go addFg addBg (posDown r1 pos) i2
          in M (s1 <> s2) (r1 + r2) (max c1 c2)
       ImageA i1 i2 ->
-        let M s1 r1 c1 = irenderm pos i1
-            M s2 r2 c2 = irenderm pos i2
+        let M s1 r1 c1 = go addFg addBg pos i1
+            M s2 r2 c2 = go addFg addBg pos i2
          in M (s1 <> s2) (max r1 r2) (max c1 c2)
-      ImageFg c i -> go (fg c) addBg i
-      ImageBg c i -> go addFg (bg c) i
+      ImageFg c i -> go (fg c) addBg pos i
+      ImageBg c i -> go addFg (bg c) pos i
+      ImagePos p i -> go addFg addBg (translate pos p) i
       ImageEmpty -> mempty
+
+translate :: Pos -> Pos -> Pos
+translate (Pos r1 c1) (Pos r2 c2) = Pos (r1 + r2) (c1 + c2)
